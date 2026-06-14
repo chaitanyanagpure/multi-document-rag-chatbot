@@ -1,0 +1,151 @@
+# =============================================================================
+# VerbaFlow AI — NGINX Ingress
+# =============================================================================
+# Prerequisites:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+#   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+# =============================================================================
+
+# ─── ClusterIssuer (Let's Encrypt) ───────────────────────────────────────────
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app.kubernetes.io/name: verbaflow
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: devops@yourdomain.com   # ← change this
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+# ─── Ingress ─────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: verbaflow-ingress
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow
+    app.kubernetes.io/component: ingress
+  annotations:
+    # ── Ingress class ───────────────────────────────────────────────────────
+    kubernetes.io/ingress.class: "nginx"
+
+    # ── TLS / cert-manager ──────────────────────────────────────────────────
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # ── SSL settings ────────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305"
+    nginx.ingress.kubernetes.io/ssl-prefer-server-ciphers: "true"
+
+    # ── HSTS ────────────────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+
+    # ── Proxy settings ──────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+
+    # ── WebSocket support ───────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+
+    # ── Rate limiting ───────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
+
+    # ── CORS headers ────────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://yourdomain.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Requested-With, X-Request-ID"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "600"
+
+    # ── Security headers via snippet ────────────────────────────────────────
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://yourdomain.com https://yourdomain.com;" always;
+
+    # ── WebSocket upgrade snippet ────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location /ws {
+        proxy_pass http://verbaflow-backend:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+      }
+
+spec:
+  tls:
+    - hosts:
+        - yourdomain.com              # ← change this
+        - www.yourdomain.com          # ← change this
+      secretName: verbaflow-tls-cert
+
+  rules:
+    # ── Main domain ──────────────────────────────────────────────────────────
+    - host: yourdomain.com           # ← change this
+      http:
+        paths:
+          # API routes → backend
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: verbaflow-backend
+                port:
+                  name: http
+
+          # Metrics routes (consider restricting to internal only)
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: verbaflow-backend
+                port:
+                  name: metrics
+
+          # All other routes → frontend
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: verbaflow-frontend
+                port:
+                  name: http
+
+    # ── www redirect ─────────────────────────────────────────────────────────
+    - host: www.yourdomain.com       # ← change this
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: verbaflow-frontend
+                port:
+                  name: http

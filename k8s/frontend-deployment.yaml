@@ -1,0 +1,211 @@
+# =============================================================================
+# VerbaFlow AI — Frontend (Next.js) Deployment + HPA
+# =============================================================================
+
+# ─── Service ──────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: verbaflow-frontend
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow-frontend
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: verbaflow-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
+---
+# ─── Deployment ───────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verbaflow-frontend
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow-frontend
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: verbaflow-frontend
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: verbaflow-frontend
+        app.kubernetes.io/component: frontend
+
+    spec:
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+
+      # ── Anti-affinity: spread pods across nodes ─────────────────────────
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: verbaflow-frontend
+                topologyKey: "kubernetes.io/hostname"
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "topology.kubernetes.io/zone"
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: verbaflow-frontend
+
+      # ── Init Container: wait for backend ────────────────────────────────
+      initContainers:
+        - name: wait-for-backend
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z verbaflow-backend 8000; do
+                echo "Waiting for backend API..."; sleep 3
+              done
+              echo "Backend is ready!"
+
+      # ── Main Container ──────────────────────────────────────────────────
+      containers:
+        - name: frontend
+          image: ghcr.io/your-org/verbaflow-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+            - name: PORT
+              value: "3000"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            # These are build-time vars baked into the image.
+            # Override at runtime only if your Next.js config supports it.
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: verbaflow-config
+                  key: NEXT_PUBLIC_API_URL
+                  optional: true
+            - name: NEXT_PUBLIC_APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: verbaflow-config
+                  key: NEXT_PUBLIC_APP_NAME
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+          # ── Liveness Probe ──────────────────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # ── Readiness Probe ─────────────────────────────────────────────
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ── Startup Probe ───────────────────────────────────────────────
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            failureThreshold: 20
+            periodSeconds: 10
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+---
+# ─── HorizontalPodAutoscaler ──────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: verbaflow-frontend-hpa
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow-frontend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: verbaflow-frontend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60

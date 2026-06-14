@@ -1,0 +1,309 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "VerbaFlow Prometheus datasource",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "VerbaFlow AI — Production Monitoring Dashboard",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "🚀 Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          },
+          "unit": "percentunit",
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "title": "Error Rate (5m)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(http_requests_total{namespace=\"verbaflow\",job=\"verbaflow-backend\",status=~\"5..\"}[5m]) / rate(http_requests_total{namespace=\"verbaflow\",job=\"verbaflow-backend\"}[5m])",
+          "legendFormat": "Error Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "title": "P99 Latency",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace=\"verbaflow\",job=\"verbaflow-backend\"}[5m]))",
+          "legendFormat": "P99",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "title": "Request Rate (RPS)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{namespace=\"verbaflow\",job=\"verbaflow-backend\"}[5m]))",
+          "legendFormat": "RPS",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] } } },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "Active Backend Pods",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "kube_deployment_status_replicas_available{namespace=\"verbaflow\",deployment=\"verbaflow-backend\"}",
+          "legendFormat": "Pods",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] } } },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "title": "Active WebSocket Connections",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "verbaflow_websocket_connections_active{namespace=\"verbaflow\"}",
+          "legendFormat": "WS Connections",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "📈 Request Rate & Latency",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "HTTP Request Rate by Status",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{namespace=\"verbaflow\",job=\"verbaflow-backend\",status=~\"2..\"}[5m]))", "legendFormat": "2xx", "refId": "A" },
+        { "expr": "sum(rate(http_requests_total{namespace=\"verbaflow\",job=\"verbaflow-backend\",status=~\"4..\"}[5m]))", "legendFormat": "4xx", "refId": "B" },
+        { "expr": "sum(rate(http_requests_total{namespace=\"verbaflow\",job=\"verbaflow-backend\",status=~\"5..\"}[5m]))", "legendFormat": "5xx", "refId": "C" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 11,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Request Latency Percentiles",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{namespace=\"verbaflow\",job=\"verbaflow-backend\"}[5m]))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace=\"verbaflow\",job=\"verbaflow-backend\"}[5m]))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace=\"verbaflow\",job=\"verbaflow-backend\"}[5m]))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "💻 Resource Usage",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "id": 20,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "CPU Usage by Pod",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"verbaflow\",container!=\"\",container!=\"POD\"}[5m])) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"verbaflow\",resource=\"cpu\"})",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 21,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Memory Usage by Pod",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"verbaflow\",container!=\"\",container!=\"POD\"})",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "🗄️ Database & Cache",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "id": 30,
+      "title": "PostgreSQL Active Connections",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "pg_stat_activity_count{namespace=\"verbaflow\",state=\"active\"}", "legendFormat": "Active", "refId": "A" },
+        { "expr": "pg_stat_activity_count{namespace=\"verbaflow\",state=\"idle\"}", "legendFormat": "Idle", "refId": "B" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "id": 31,
+      "title": "Redis Operations/sec",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(redis_commands_processed_total{namespace=\"verbaflow\"}[1m])", "legendFormat": "Commands/s", "refId": "A" },
+        { "expr": "redis_connected_clients{namespace=\"verbaflow\"}", "legendFormat": "Connected Clients", "refId": "B" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "id": 32,
+      "title": "Redis Cache Hit Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(redis_keyspace_hits_total{namespace=\"verbaflow\"}[5m]) / (rate(redis_keyspace_hits_total{namespace=\"verbaflow\"}[5m]) + rate(redis_keyspace_misses_total{namespace=\"verbaflow\"}[5m]))",
+          "legendFormat": "Hit Rate",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["verbaflow", "production", "rag", "fastapi"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(http_requests_total{namespace=\"verbaflow\"}, namespace)",
+        "hide": 0,
+        "includeAll": false,
+        "name": "namespace",
+        "options": [],
+        "query": { "query": "label_values(http_requests_total{namespace=\"verbaflow\"}, namespace)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "VerbaFlow AI — Production Dashboard",
+  "uid": "verbaflow-prod-v1",
+  "version": 1
+}

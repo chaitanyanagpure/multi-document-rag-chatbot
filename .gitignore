@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Node
+node_modules/
+.next/
+
+# Database
+*.db
+
+# Logs
+logs/
+*.log
+
+# Mac
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env.local
+.env.production
+
+# Uploaded files
+uploads/
+
+# Vector DB
+faiss_index/

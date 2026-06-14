@@ -1,0 +1,423 @@
+# =============================================================================
+# VerbaFlow AI — GitHub Actions CI Pipeline
+# =============================================================================
+# Triggers: push to main/develop, pull requests
+# Jobs:
+#   1. lint-backend     — flake8, black, mypy
+#   2. test-backend     — pytest with PostgreSQL + Redis services, coverage
+#   3. lint-frontend    — ESLint, TypeScript type check
+#   4. build-frontend   — npm run build
+#   5. security-scan    — bandit (Python), npm audit (Node)
+#   6. docker-build     — build both Docker images (no push on PR)
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+      - "hotfix/**"
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+# Cancel in-progress runs on the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  IMAGE_ORG: ${{ github.repository_owner }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1: Lint Backend
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  lint-backend:
+    name: "🐍 Lint Backend"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install linting dependencies
+        run: |
+          pip install --upgrade pip
+          pip install flake8 black mypy isort bandit
+          # Install type stubs
+          pip install types-redis types-requests types-python-jose
+
+      - name: Run flake8 (style + syntax)
+        run: |
+          flake8 app/ \
+            --max-line-length=120 \
+            --extend-ignore=E203,W503 \
+            --exclude=.venv,__pycache__,.eggs \
+            --format='%(path)s:%(row)d:%(col)d: %(code)s %(text)s'
+
+      - name: Run black (formatting check)
+        run: black --check --diff --line-length=120 app/
+
+      - name: Run isort (import order)
+        run: isort --check-only --diff app/
+
+      - name: Run mypy (type checking)
+        run: |
+          mypy app/ \
+            --ignore-missing-imports \
+            --no-strict-optional \
+            --warn-unused-ignores \
+            --warn-return-any \
+            --show-error-codes
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 2: Test Backend
+  # ─────────────────────────────────────────────────────────────────────────
+  test-backend:
+    name: "🧪 Test Backend"
+    runs-on: ubuntu-latest
+    needs: lint-backend
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: verbaflow_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: verbaflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U verbaflow_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://verbaflow_test:test_password@localhost:5432/verbaflow_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: test-secret-key-for-ci-do-not-use-in-prod-abc123
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      GEMINI_API_KEY: test-key
+      OPENAI_API_KEY: test-key
+      EMBEDDING_PROVIDER: google
+      LLM_PROVIDER: gemini
+      VECTOR_STORE_TYPE: faiss
+      FAISS_INDEX_PATH: /tmp/test_faiss
+      UPLOAD_DIR: /tmp/test_uploads
+      STORAGE_BACKEND: local
+      CHUNK_SIZE: "1000"
+      CHUNK_OVERLAP: "200"
+      RETRIEVAL_COUNT: "5"
+      SIMILARITY_THRESHOLD: "0.7"
+      TESTING: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-mock httpx anyio
+
+      - name: Create test directories
+        run: mkdir -p /tmp/test_faiss /tmp/test_uploads
+
+      - name: Run database migrations
+        run: |
+          alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://verbaflow_test:test_password@localhost:5432/verbaflow_test
+
+      - name: Run pytest with coverage
+        run: |
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-report=term-missing \
+            --cov-fail-under=70 \
+            --asyncio-mode=auto \
+            -x
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: backend-test-results
+          path: |
+            backend/htmlcov/
+            backend/coverage.xml
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 3: Lint Frontend
+  # ─────────────────────────────────────────────────────────────────────────
+  lint-frontend:
+    name: "⚡ Lint Frontend"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Run ESLint
+        run: npx eslint . --ext .ts,.tsx,.js,.jsx --max-warnings=0 --format=compact
+
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit --project tsconfig.json
+
+      - name: Check Prettier formatting
+        run: npx prettier --check "**/*.{ts,tsx,js,jsx,json,css,scss,md}"
+        continue-on-error: true   # warn only
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 4: Build Frontend
+  # ─────────────────────────────────────────────────────────────────────────
+  build-frontend:
+    name: "🏗️ Build Frontend"
+    runs-on: ubuntu-latest
+    needs: lint-frontend
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Build Next.js application
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_WS_URL: ws://localhost:8000
+          NEXT_PUBLIC_APP_NAME: VerbaFlow AI
+          NEXT_TELEMETRY_DISABLED: "1"
+          NODE_ENV: production
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/.next/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 5: Security Scan
+  # ─────────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: "🔒 Security Scan"
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit (Python SAST)
+        run: |
+          bandit -r backend/app/ \
+            -ll \
+            --format json \
+            --output bandit-report.json || true
+          bandit -r backend/app/ -ll --format txt
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run npm audit (Node.js dependency vulnerabilities)
+        working-directory: frontend
+        run: |
+          npm audit --audit-level=high --json > npm-audit.json || true
+          npm audit --audit-level=high
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            npm-audit.json
+            trivy-results.sarif
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 6: Docker Build (no push on PR)
+  # ─────────────────────────────────────────────────────────────────────────
+  docker-build:
+    name: "🐳 Docker Build"
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend]
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service:
+          - name: backend
+            context: ./backend
+            image: verbaflow-backend
+          - name: frontend
+            context: ./frontend
+            image: verbaflow-frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (multi-platform builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ matrix.service.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        if: github.event_name != 'pull_request'
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ matrix.service.image }}:latest
+          format: "table"
+          exit-code: "0"
+          severity: "CRITICAL"

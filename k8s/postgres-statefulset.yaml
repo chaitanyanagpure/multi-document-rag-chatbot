@@ -1,0 +1,217 @@
+# =============================================================================
+# VerbaFlow AI — PostgreSQL StatefulSet
+# =============================================================================
+# Note: For high-availability, consider:
+#   - Bitnami PostgreSQL HA Helm chart (uses Patroni)
+#   - CloudSQL (GCP), RDS (AWS), Azure Database for PostgreSQL
+#   - Zalando postgres-operator
+# This manifest uses a single-replica StatefulSet suitable for staging and
+# small production workloads with regular backups.
+# =============================================================================
+
+# ─── Headless Service for StatefulSet DNS ────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: verbaflow-postgres-headless
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow-postgres
+    app.kubernetes.io/component: database
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: verbaflow-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+# ─── ClusterIP Service ───────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: verbaflow-postgres
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow-postgres
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: verbaflow-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+---
+# ─── StatefulSet ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: verbaflow-postgres
+  namespace: verbaflow
+  labels:
+    app.kubernetes.io/name: verbaflow-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/version: "16"
+spec:
+  serviceName: verbaflow-postgres-headless
+  # Replicas: 1 for single-primary.
+  # For HA: use postgres-operator or Patroni with replicas: 3
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: verbaflow-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: verbaflow-postgres
+        app.kubernetes.io/component: database
+      annotations:
+        # Prometheus scrape config (if pg_exporter sidecar is added)
+        prometheus.io/scrape: "false"
+    spec:
+      terminationGracePeriodSeconds: 60
+      # Run PostgreSQL as postgres user (UID 999)
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        runAsNonRoot: true
+
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: verbaflow-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: verbaflow-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: verbaflow-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            # Performance tuning
+            - name: POSTGRES_INITDB_ARGS
+              value: "--encoding=UTF8 --locale=en_US.UTF-8"
+
+          # PostgreSQL performance configuration via args
+          args:
+            - "-c"
+            - "max_connections=200"
+            - "-c"
+            - "shared_buffers=256MB"
+            - "-c"
+            - "effective_cache_size=768MB"
+            - "-c"
+            - "maintenance_work_mem=64MB"
+            - "-c"
+            - "checkpoint_completion_target=0.9"
+            - "-c"
+            - "wal_buffers=16MB"
+            - "-c"
+            - "default_statistics_target=100"
+            - "-c"
+            - "random_page_cost=1.1"
+            - "-c"
+            - "effective_io_concurrency=200"
+            - "-c"
+            - "log_min_duration_statement=1000"
+            - "-c"
+            - "log_connections=on"
+            - "-c"
+            - "log_disconnections=on"
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+
+          # ── Liveness Probe ────────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+            successThreshold: 1
+
+          # ── Readiness Probe ───────────────────────────────────────────────
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Startup Probe ─────────────────────────────────────────────────
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+            failureThreshold: 30
+            periodSeconds: 10
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: verbaflow-postgres-init
+            optional: true
+
+  # ── Persistent Volume Claim Template ────────────────────────────────────────
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app.kubernetes.io/name: verbaflow-postgres
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 50Gi

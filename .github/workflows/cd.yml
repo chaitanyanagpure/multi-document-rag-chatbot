@@ -1,0 +1,482 @@
+# =============================================================================
+# VerbaFlow AI — GitHub Actions CD Pipeline
+# =============================================================================
+# Triggers: push to main (after CI passes)
+# Jobs:
+#   1. build-push          — Build & push images to GHCR
+#   2. deploy-staging      — kubectl apply to staging namespace + migrations
+#   3. integration-test    — Smoke tests against staging
+#   4. deploy-production   — Manual approval gate + kubectl apply to prod
+#   5. notify              — Slack notification on success/failure
+# =============================================================================
+
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: "Docker image tag to deploy (default: latest sha)"
+        required: false
+        default: ""
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false   # Never cancel in-progress deployments
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_ORG: ${{ github.repository_owner }}
+  BACKEND_IMAGE: verbaflow-backend
+  FRONTEND_IMAGE: verbaflow-frontend
+  K8S_NAMESPACE_STAGING: verbaflow-staging
+  K8S_NAMESPACE_PROD: verbaflow
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1: Build & Push Docker Images
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build-push:
+    name: "🐳 Build & Push Images"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.image_tag.outputs.tag }}
+      backend_image: ${{ steps.meta-backend.outputs.tags }}
+      frontend_image: ${{ steps.meta-frontend.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: image_tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          else
+            TAG="sha-$(git rev-parse --short HEAD)"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Using image tag: ${TAG}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Backend ─────────────────────────────────────────────────────────
+      - name: Extract backend metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.image_tag.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      # ── Frontend ─────────────────────────────────────────────────────────
+      - name: Extract frontend metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.image_tag.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL_PROD }}
+            NEXT_PUBLIC_WS_URL=${{ secrets.NEXT_PUBLIC_WS_URL_PROD }}
+            NEXT_PUBLIC_APP_NAME=VerbaFlow AI
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 2: Deploy to Staging
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: "🚀 Deploy to Staging"
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment:
+      name: staging
+      url: https://staging.yourdomain.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl (GKE example)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_STAGING }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials \
+            ${{ secrets.GKE_CLUSTER_STAGING }} \
+            --region ${{ secrets.GKE_REGION }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      # Alternative: AWS EKS
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: us-east-1
+      # - name: Get EKS kubeconfig
+      #   run: aws eks update-kubeconfig --name verbaflow-staging --region us-east-1
+
+      - name: Ensure staging namespace exists
+        run: |
+          kubectl apply -f k8s/namespace.yaml || true
+          kubectl create namespace ${{ env.K8S_NAMESPACE_STAGING }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply ConfigMaps & Secrets
+        run: |
+          kubectl apply -f k8s/configmap.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+          # Secrets are managed via sealed-secrets or external-secrets-operator
+          # kubectl apply -f k8s/secrets.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+
+      - name: Deploy PostgreSQL (if not exists)
+        run: |
+          kubectl apply -f k8s/postgres-statefulset.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+          kubectl rollout status statefulset/verbaflow-postgres \
+            -n ${{ env.K8S_NAMESPACE_STAGING }} \
+            --timeout=120s
+
+      - name: Deploy Redis (if not exists)
+        run: |
+          kubectl apply -f k8s/redis-deployment.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+          kubectl rollout status deployment/verbaflow-redis \
+            -n ${{ env.K8S_NAMESPACE_STAGING }} \
+            --timeout=60s
+
+      - name: Update backend image tag
+        run: |
+          kubectl set image deployment/verbaflow-backend \
+            backend=${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.BACKEND_IMAGE }}:${{ needs.build-push.outputs.image_tag }} \
+            -n ${{ env.K8S_NAMESPACE_STAGING }}
+
+      - name: Apply backend deployment
+        run: |
+          kubectl apply -f k8s/backend-deployment.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+          kubectl rollout status deployment/verbaflow-backend \
+            -n ${{ env.K8S_NAMESPACE_STAGING }} \
+            --timeout=180s
+
+      - name: Run Database Migrations
+        run: |
+          kubectl run db-migration-${{ github.run_id }} \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.BACKEND_IMAGE }}:${{ needs.build-push.outputs.image_tag }} \
+            --restart=Never \
+            --env="DATABASE_URL=$(kubectl get secret verbaflow-secrets -n ${{ env.K8S_NAMESPACE_STAGING }} -o jsonpath='{.data.DATABASE_URL}' | base64 -d)" \
+            --command -- alembic upgrade head \
+            -n ${{ env.K8S_NAMESPACE_STAGING }}
+          kubectl wait --for=condition=complete job/db-migration-${{ github.run_id }} \
+            -n ${{ env.K8S_NAMESPACE_STAGING }} \
+            --timeout=120s || \
+          kubectl wait --for=condition=failed job/db-migration-${{ github.run_id }} \
+            -n ${{ env.K8S_NAMESPACE_STAGING }} \
+            --timeout=120s
+
+      - name: Update frontend image tag
+        run: |
+          kubectl set image deployment/verbaflow-frontend \
+            frontend=${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.FRONTEND_IMAGE }}:${{ needs.build-push.outputs.image_tag }} \
+            -n ${{ env.K8S_NAMESPACE_STAGING }}
+
+      - name: Apply frontend deployment
+        run: |
+          kubectl apply -f k8s/frontend-deployment.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+          kubectl rollout status deployment/verbaflow-frontend \
+            -n ${{ env.K8S_NAMESPACE_STAGING }} \
+            --timeout=120s
+
+      - name: Apply Ingress
+        run: kubectl apply -f k8s/ingress.yaml -n ${{ env.K8S_NAMESPACE_STAGING }}
+
+      - name: Print staging status
+        if: always()
+        run: |
+          echo "=== Pod Status ==="
+          kubectl get pods -n ${{ env.K8S_NAMESPACE_STAGING }}
+          echo "=== Services ==="
+          kubectl get services -n ${{ env.K8S_NAMESPACE_STAGING }}
+          echo "=== Ingress ==="
+          kubectl get ingress -n ${{ env.K8S_NAMESPACE_STAGING }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 3: Integration / Smoke Tests
+  # ─────────────────────────────────────────────────────────────────────────
+  integration-test:
+    name: "🧪 Integration Tests (Staging)"
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment:
+      name: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install httpx pytest pytest-asyncio
+
+      - name: Wait for staging to be ready
+        run: |
+          echo "Waiting for staging API to respond..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://staging.yourdomain.com/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Staging API is healthy (attempt $i)"
+              break
+            fi
+            echo "Attempt $i: status=$STATUS, retrying in 10s..."
+            sleep 10
+          done
+
+      - name: Run smoke tests
+        env:
+          BASE_URL: https://staging.yourdomain.com
+          TEST_USER_EMAIL: ${{ secrets.STAGING_TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.STAGING_TEST_USER_PASSWORD }}
+        run: |
+          pytest tests/smoke/ \
+            -v \
+            --tb=short \
+            -x \
+            --timeout=30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 4: Deploy to Production (manual approval)
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: "🏭 Deploy to Production"
+    runs-on: ubuntu-latest
+    needs: [build-push, integration-test]
+    environment:
+      name: production
+      url: https://yourdomain.com
+    # environment: production requires manual approval in GitHub UI
+    # Configure: Settings → Environments → production → Required reviewers
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl (GKE Production)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get GKE Production credentials
+        run: |
+          gcloud container clusters get-credentials \
+            ${{ secrets.GKE_CLUSTER_PROD }} \
+            --region ${{ secrets.GKE_REGION }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Apply ConfigMaps
+        run: kubectl apply -f k8s/configmap.yaml -n ${{ env.K8S_NAMESPACE_PROD }}
+
+      - name: Deploy PostgreSQL StatefulSet
+        run: |
+          kubectl apply -f k8s/postgres-statefulset.yaml -n ${{ env.K8S_NAMESPACE_PROD }}
+          kubectl rollout status statefulset/verbaflow-postgres \
+            -n ${{ env.K8S_NAMESPACE_PROD }} --timeout=180s
+
+      - name: Deploy Redis
+        run: |
+          kubectl apply -f k8s/redis-deployment.yaml -n ${{ env.K8S_NAMESPACE_PROD }}
+          kubectl rollout status deployment/verbaflow-redis \
+            -n ${{ env.K8S_NAMESPACE_PROD }} --timeout=60s
+
+      - name: Run Production DB Migrations
+        run: |
+          kubectl run db-migration-prod-${{ github.run_id }} \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.BACKEND_IMAGE }}:${{ needs.build-push.outputs.image_tag }} \
+            --restart=Never \
+            --env="DATABASE_URL=$(kubectl get secret verbaflow-secrets -n ${{ env.K8S_NAMESPACE_PROD }} -o jsonpath='{.data.DATABASE_URL}' | base64 -d)" \
+            --command -- alembic upgrade head \
+            -n ${{ env.K8S_NAMESPACE_PROD }}
+          kubectl wait --for=condition=complete pod/db-migration-prod-${{ github.run_id }} \
+            -n ${{ env.K8S_NAMESPACE_PROD }} --timeout=120s
+
+      - name: Update backend image (production)
+        run: |
+          kubectl set image deployment/verbaflow-backend \
+            backend=${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.BACKEND_IMAGE }}:${{ needs.build-push.outputs.image_tag }} \
+            -n ${{ env.K8S_NAMESPACE_PROD }}
+          kubectl apply -f k8s/backend-deployment.yaml -n ${{ env.K8S_NAMESPACE_PROD }}
+
+      - name: Wait for backend rollout
+        run: |
+          kubectl rollout status deployment/verbaflow-backend \
+            -n ${{ env.K8S_NAMESPACE_PROD }} \
+            --timeout=300s
+
+      - name: Update frontend image (production)
+        run: |
+          kubectl set image deployment/verbaflow-frontend \
+            frontend=${{ env.REGISTRY }}/${{ env.IMAGE_ORG }}/${{ env.FRONTEND_IMAGE }}:${{ needs.build-push.outputs.image_tag }} \
+            -n ${{ env.K8S_NAMESPACE_PROD }}
+          kubectl apply -f k8s/frontend-deployment.yaml -n ${{ env.K8S_NAMESPACE_PROD }}
+
+      - name: Wait for frontend rollout
+        run: |
+          kubectl rollout status deployment/verbaflow-frontend \
+            -n ${{ env.K8S_NAMESPACE_PROD }} \
+            --timeout=180s
+
+      - name: Apply Ingress (production)
+        run: kubectl apply -f k8s/ingress.yaml -n ${{ env.K8S_NAMESPACE_PROD }}
+
+      - name: Verify production health
+        run: |
+          sleep 30
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://yourdomain.com/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Production health check failed! Status: $STATUS"
+            echo "Initiating rollback..."
+            kubectl rollout undo deployment/verbaflow-backend -n ${{ env.K8S_NAMESPACE_PROD }}
+            kubectl rollout undo deployment/verbaflow-frontend -n ${{ env.K8S_NAMESPACE_PROD }}
+            exit 1
+          fi
+          echo "✅ Production is healthy!"
+
+      - name: Tag release in git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "deploy-$(date +'%Y%m%d-%H%M%S')" \
+            -m "Production deployment: ${{ needs.build-push.outputs.image_tag }}"
+          git push origin --tags
+
+      - name: Print production status
+        if: always()
+        run: |
+          echo "=== Production Pod Status ==="
+          kubectl get pods -n ${{ env.K8S_NAMESPACE_PROD }}
+          echo "=== HPA Status ==="
+          kubectl get hpa -n ${{ env.K8S_NAMESPACE_PROD }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 5: Slack Notification
+  # ─────────────────────────────────────────────────────────────────────────
+  notify:
+    name: "📢 Notify"
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+
+    steps:
+      - name: Determine deployment status
+        id: status
+        run: |
+          if [ "${{ needs.deploy-production.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "color=#36a64f" >> $GITHUB_OUTPUT
+            echo "message=Production deployment successful!" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.deploy-production.result }}" == "skipped" ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+            echo "emoji=⏭️" >> $GITHUB_OUTPUT
+            echo "color=#ffa500" >> $GITHUB_OUTPUT
+            echo "message=Production deployment was skipped (staging only)." >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "color=#ff0000" >> $GITHUB_OUTPUT
+            echo "message=Production deployment FAILED! Manual intervention required." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.status.outputs.color }}",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "${{ steps.status.outputs.emoji }} VerbaFlow AI Deployment"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        { "type": "mrkdwn", "text": "*Status:*\n${{ steps.status.outputs.message }}" },
+                        { "type": "mrkdwn", "text": "*Image Tag:*\n`${{ needs.build-push.outputs.image_tag }}`" },
+                        { "type": "mrkdwn", "text": "*Triggered by:*\n${{ github.actor }}" },
+                        { "type": "mrkdwn", "text": "*Branch:*\n`${{ github.ref_name }}`" },
+                        { "type": "mrkdwn", "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>" },
+                        { "type": "mrkdwn", "text": "*Workflow Run:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
