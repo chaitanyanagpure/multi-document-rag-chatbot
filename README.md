@@ -1,43 +1,72 @@
-# VerbaFlow AI 🚀
-### Enterprise-Grade Multi-Document RAG & Chat Intelligence Platform
+# Enterprise Multi-Document RAG Chatbot
 
-[![CI](https://github.com/your-org/verbaflow-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/verbaflow-ai/actions/workflows/ci.yml)
-[![CD](https://github.com/your-org/verbaflow-ai/actions/workflows/cd.yml/badge.svg)](https://github.com/your-org/verbaflow-ai/actions/workflows/cd.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Next.js](https://img.shields.io/badge/Next.js-14.2-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)
+An enterprise-grade AI-powered Retrieval-Augmented Generation (RAG) platform that enables users to upload, manage, and query multiple documents through an intelligent conversational interface.
 
-**VerbaFlow AI** is a production-ready, highly optimized **Multi-Document Retrieval-Augmented Generation (RAG)** platform designed for enterprise environments. It provides isolated multi-tenant workspaces where teams can ingest high volumes of documents (PDFs, Docx, spreadsheets, and more), process them through an advanced hybrid search pipeline, and query them via real-time SSE (Server-Sent Events) streaming with inline citations and full developer telemetry diagnostics.
+Built using Next.js, FastAPI, PostgreSQL, Redis, FAISS, and Gemini AI, the platform combines semantic vector search and lexical retrieval to provide highly accurate, context-aware responses from uploaded knowledge bases.
 
 ---
 
-## 🏗️ Architectural Blueprint
+## Project Highlights
 
-```
-                     ┌──────────────────────────────────────────────────────────┐
-                     │              VerbaFlow AI Web Application                │
-                     └──────────────────────────────────────────────────────────┘
-                                                   │
-                          ┌────────────────────────┴────────────────────────┐
-                          ▼                                                 ▼
-             ┌─────────────────────────┐                       ┌─────────────────────────┐
-             │    Next.js Frontend     │                       │     FastAPI Backend     │
-             │   (React 18 / TS)       │       REST / SSE      │    (Python 3.12 async)  │
-             │  • Port 3000            ├──────────────────────►│   • Port 8000           │
-             │  • Tailwind CSS         │      WebSockets       │   • Uvicorn ASGI Server │
-             └─────────────────────────┘                       └────────────+────────────┘
-                                                                            │
-                                         ┌──────────────────────────────────+──────────────────────────────────┐
-                                         ▼                                  ▼                                  ▼
-                            ┌─────────────────────────┐        ┌─────────────────────────┐        ┌─────────────────────────┐
-                            │      PostgreSQL 16      │        │         Redis 7         │        │    Vector Database      │
-                            │  • Multi-tenant DB      │        │  • Sliding Rate Limits  │        │  • Per-KB FAISS Indices │
-                            │  • User Profiles & RBAC │        │  • Token cache store    │        │  • Pinecone (Optional)  │
-                            │  • Diagnostic Audit Logs│        │  • Ingestion worker queue│       └─────────────────────────┘
-                            └─────────────────────────┘        └─────────────────────────┘
+* Multi-document Knowledge Base Management
+* AI-powered Conversational Search
+* Hybrid Retrieval (FAISS + BM25)
+* Role-Based Access Control (RBAC)
+* Multi-Tenant Architecture
+* FastAPI Backend with Async Processing
+* Modern Next.js 14 Frontend
+* Redis Caching & Rate Limiting
+* Docker & Kubernetes Ready
+* Enterprise Dashboard UI
+
+---
+
+## Problem Statement
+
+Organizations often struggle to efficiently retrieve information from large collections of documents.
+
+Traditional keyword search systems fail to understand context and semantics.
+
+This project solves the problem by combining:
+
+* Semantic Vector Search (FAISS)
+* Lexical Search (BM25)
+* Hybrid Retrieval Pipeline (RRF)
+* Large Language Models (Gemini AI)
+
+to deliver accurate answers grounded in organizational knowledge.
+
+---
+
+## System Architecture
+
+```text
+User
+ │
+ ▼
+Next.js Frontend
+ │
+ ▼
+FastAPI Backend
+ │
+ ├── Authentication & RBAC
+ ├── Knowledge Base Management
+ ├── Chat Service
+ └── Retrieval Engine
+          │
+          ├── FAISS Vector Search
+          ├── BM25 Lexical Search
+          └── RRF Fusion
+                    │
+                    ▼
+               Gemini AI
+                    │
+                    ▼
+               Final Response
+
+Database Layer
+ ├── PostgreSQL
+ └── Redis Cache
 ```
 
 ---
@@ -116,29 +145,34 @@
 ## Application Screenshots
 
 ### Login Page
-<img width="1470" height="873" alt="Login Page" src="https://github.com/user-attachments/assets/e0c3550a-5fcd-4192-85ba-d17ef245c79d" />
+<img width="1470" height="873" alt="Login Page" src="https://github.com/user-attachments/assets/4a048db3-f355-46e4-bd5c-75411687f233" />
 
-### knowledge Base
-<img width="1470" height="876" alt="Knowledge Base " src="https://github.com/user-attachments/assets/d7ae2997-bb27-499d-b459-a8cd9efe7f46" />
+### Knowledge Base 
+<img width="1470" height="876" alt="Knowledge Base " src="https://github.com/user-attachments/assets/13037d6d-12d0-4625-a9c7-103c8ec05dd3" />
 
 ### Ingestion Pipeline Process
-<img width="1470" height="878" alt="Ingestion Pipeline Process" src="https://github.com/user-attachments/assets/b2c17c96-9471-4ece-b3ac-2f9f050c9b93" />
+<img width="1470" height="878" alt="Ingestion Pipeline Process" src="https://github.com/user-attachments/assets/54ef30b2-e895-4bfa-abc6-f980e97ff3a3" />
 
 ### Document upload in Knowledge Base
-<img width="1470" height="882" alt="Document upload in Knowledge Base" src="https://github.com/user-attachments/assets/8ca4fb00-faba-470d-83a8-e9a21ca273fe" />
+<img width="1470" height="882" alt="Document upload in Knowledge Base" src="https://github.com/user-attachments/assets/3691593a-da91-4e9d-849a-0d2158d11792" />
 
 ### Chat Interface 1
-<img width="1470" height="882" alt="Chat Interfce 1 " src="https://github.com/user-attachments/assets/d789124a-2597-4205-b172-211ffa706a89" />
+<img width="1470" height="882" alt="Chat Interfce 1 " src="https://github.com/user-attachments/assets/07dabc60-a019-4f30-bdc4-04002d092a09" />
 
 ### Chat Interface 2
-<img width="1470" height="884" alt="Chat Interface 2 " src="https://github.com/user-attachments/assets/04aa0527-1c20-4329-b278-798a06542fcf" />
+<img width="1470" height="884" alt="Chat Interface 2 " src="https://github.com/user-attachments/assets/3436cbd8-5416-45cb-b72a-290507d4c288" />
 
 ### Analytics Page
-<img width="1470" height="886" alt="Analytics Page" src="https://github.com/user-attachments/assets/1d722d45-fe8b-4bdb-8c24-8180cc902837" />
+<img width="1470" height="886" alt="Analytics Page" src="https://github.com/user-attachments/assets/5da31346-c3bf-46cd-96ef-bd8bb0f98021" />
 
 ### Screenshots
-<img width="1470" height="886" alt="Screenshot 2026-06-14 at 3 08 56 PM" src="https://github.com/user-attachments/assets/d0d2bcab-d776-454d-9878-9f4d17b622b5" />
-<img width="1470" height="882" alt="Screenshot 2026-06-14 at 3 08 48 PM" src="https://github.com/user-attachments/assets/0bae26a2-09d3-4d67-802c-8eda4a7fb642" />
+<img width="1470" height="886" alt="Screenshot 2026-06-14 at 3 08 56 PM" src="https://github.com/user-attachments/assets/c265d44e-65f0-4d4b-97c5-e215443ad8a0" />
+<img width="1470" height="882" alt="Screenshot 2026-06-14 at 3 08 48 PM" src="https://github.com/user-attachments/assets/6bda7454-47f6-4ebf-bed8-1b37186a9435" />
+
+---
+## Architucture Diagram
+<img width="1536" height="1024" alt="Architecture " src="https://github.com/user-attachments/assets/9daaa48b-31a6-45ce-b3b4-4d4bff55e2c8" />
+
 
 ---
 
@@ -153,74 +187,80 @@
 
 ---
 
-## 🚀 Local Development Quick Start
+## Local Setup
 
-### 1. Clone & Set Environment
+### Clone Repository
+
 ```bash
-git clone https://github.com/your-org/verbaflow-ai.git
-cd verbaflow-ai
-cp .env.example .env
-```
-Open `.env` and configure your API key and secrets:
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-SECRET_KEY=generate_with_openssl_rand_hex_32
+git clone https://github.com/chaitanyanagpure/multi-document-rag-chatbot.git
 ```
 
-### 2. Start Services
-Launch PostgreSQL, Redis, backend, and frontend containers:
+### Backend Setup
+
 ```bash
-docker compose up -d --build
+cd backend
+
+python -m venv venv
+
+source venv/bin/activate
+
+pip install -r requirements.txt
 ```
 
-### 3. Verify Deployments
-* **Frontend UI**: http://localhost:3000
-* **API Documentation**: http://localhost:8000/docs
-* **Health Endpoint**: http://localhost:8000/health
+### Frontend Setup
 
-### 4. Run Tests
-Verify compile constraints and execution safety:
 ```bash
-docker compose exec backend pytest
+cd frontend
+
+npm install
+
+npm run dev
+```
+
+### Run Using Docker
+
+```bash
+docker-compose up --build
 ```
 
 ---
 
-## 📂 Project Structure
+## Future Enhancements
 
-```
-verbaflow-ai/
-├── backend/                    # FastAPI ASGI Python backend
-│   ├── app/
-│   │   ├── api/               # Router endpoints (v1/)
-│   │   ├── core/              # Security, settings, config
-│   │   ├── models/            # SQLAlchemy database entities
-│   │   ├── repositories/      # Database abstraction layers
-│   │   ├── schemas/           # Pydantic validation schemas
-│   │   └── services/          # RAG, LLM, ingestion pipelines
-│   ├── tests/                 # Unit and E2E integration test suite
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── frontend/                   # Next.js 14 React frontend
-│   ├── app/                   # App Router pages and layouts
-│   ├── components/            # Reusable UI widgets and layout modules
-│   ├── lib/                   # API clients and Zustand stores
-│   ├── Dockerfile
-│   └── package.json
-│
-├── k8s/                       # Production Kubernetes manifests
-│   ├── postgres-statefulset.yaml
-│   ├── backend-deployment.yaml
-│   ├── frontend-deployment.yaml
-│   └── monitoring/            # Grafana/Prometheus dashboard mappings
-│
-├── docker-compose.yml         # Container orchestrator configuration
-├── .env.example               # Template environment configuration
-└── LICENSE                    # Project license
-```
+* Multi-Agent AI Collaboration
+* Voice-Based Interaction
+* OCR Support for Scanned PDFs
+* Real-Time Streaming Responses
+* Advanced Analytics Dashboard
+* Citation-Based Responses
+* Cloud Deployment Automation
 
 ---
 
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Author
+
+### Chaitanya Nagpure
+
+AI/ML Engineer | Full Stack Developer | Generative AI Enthusiast
+
+GitHub:
+https://github.com/chaitanyanagpure
+
+LinkedIn:
+https://www.linkedin.com/in/chaitanyanagpure?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=ios_app
+
+---
+
+## Why This Project Matters
+
+This project demonstrates expertise in:
+
+* Retrieval-Augmented Generation (RAG)
+* Generative AI Applications
+* Vector Databases
+* Full Stack Development
+* Backend System Design
+* AI Product Engineering
+* Enterprise Software Architecture
+
+The solution reflects real-world enterprise AI workflows and showcases practical implementation of modern LLM-powered applications.
