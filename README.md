@@ -170,6 +170,10 @@ Database Layer
 <img width="1470" height="882" alt="Screenshot 2026-06-14 at 3 08 48 PM" src="https://github.com/user-attachments/assets/0bae26a2-09d3-4d67-802c-8eda4a7fb642" />
 
 ---
+## Architucture Diagram
+<img width="1536" height="1024" alt="Architecture " src="https://github.com/user-attachments/assets/3ca5fc63-8b3f-4f28-acfa-161d9d6e091c" />
+
+---
 
 ## Key Engineering Achievements
 
