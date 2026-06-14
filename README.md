@@ -42,59 +42,114 @@
 
 ---
 
-## 🧠 Advanced Core Engineering & Features
+## Tech Stack
 
-This platform is built using enterprise software design patterns. Here are the core engineering solutions implemented:
+### Frontend
 
-### 1. Advanced Hybrid Search & RAG Orchestration
-* **Dual Retrieval Engine**: Combines **dense vector search** (FAISS FlatIP vector indices, capturing semantic meaning) with **sparse lexical retrieval** (BM25Okapi, catching exact keywords, codes, and IDs) to achieve high recall and precision.
-* **Reciprocal Rank Fusion (RRF)**: Merges sparse and dense search results using an algebraic rank-fusion scorer ($RRF\_Score = \sum_{m \in M} \frac{1}{k + r_m(d)}$) to generate the optimal context set.
-* **Smart Context Optimization**: Filters retrieved chunks based on strict cosine similarity thresholds, dynamically compresses prompts to respect LLM token constraints, and appends structured inline citations (mapping page numbers, sources, and similarity scores) to all responses.
-* **SSE Token Streaming**: Deliver real-time answers utilizing async HTTP generators via Server-Sent Events (SSE) directly to the user bubble.
+* Next.js 14
+* TypeScript
+* React
+* Tailwind CSS
+* Zustand
 
-### 2. High-Throughput 10-Step Ingestion Pipeline
-* **Asynchronous processing**: Large document ingestion is decoupled from the request cycle using background workers powered by Redis queues.
-* **Parallel processing**: Implements parallel batch uploads in the frontend, sending document-level ingestion events to the client via a persistent `EventSource` connection.
-* **Dynamic Backoffs & Quota Protection**: Integrates Tenacity retries and regular-expression based rate-limit parsing (reading Google's `retry_delay` seconds directly from 429 quota errors) to safely resume operations without failing jobs.
-* **Thread-Safe Vector Locks**: Synchronizes document additions, deletions, and updates to the FAISS and BM25 index stores using a per-Knowledge-Base **async lock registry** to prevent index corruption.
-* **Stuck Job Recovery Loop**: A lightweight background cleaner executes every 30 seconds to recover files stuck in processing states beyond 300 seconds, transitioning them to `FAILED` and logging detailed telemetry contexts.
+### Backend
 
-### 3. Enterprise Security & Isolation
-* **Row-Level Tenant Isolation**: All queries, collections, chats, and files are scoped using dynamic Organization Tenant IDs.
-* **JWT Session Rotation**: Employs secure cryptographic access tokens (short lifespan) and refresh tokens (long lifespan, stored in localStorage) to authenticate sessions.
-* **Role-Based Access Control (RBAC)**: Fine-grained user role permissions (`ORG_ADMIN`, `MANAGER`, `EMPLOYEE`, `VIEWER`) restrict administrative dashboards and settings adjustments.
+* FastAPI
+* SQLAlchemy 2.0
+* Uvicorn
 
-### 4. Telemetry, Metrics & Observability
-* **Performance Telemetry Logging**: Stores queried token volumes, vector search durations, LLM response latencies, and token costs in JSON diagnostics fields in the database.
-* **Developer Diagnostics Panel**: A collapsible panel on each assistant message displays detailed vector metrics, similarity matches, and traceback trace logs directly in the UI.
-* **Prometheus Metrics**: Exposes custom application metrics at the `/metrics` endpoint, ready for ingestion into Prometheus and visualization in Grafana.
+### Database
+
+* PostgreSQL 16
+
+### Caching
+
+* Redis 7
+
+### AI & Retrieval
+
+* Gemini AI
+* FAISS Vector Database
+* BM25 Search
+* Reciprocal Rank Fusion (RRF)
+
+### DevOps
+
+* Docker
+* Docker Compose
+* Kubernetes
 
 ---
 
-## 🛠️ Tech Stack & Dependencies
+## ✨ Core Features
 
-### Backend (API & RAG)
-* **FastAPI**: Async ASGI web framework.
-* **SQLAlchemy 2.0**: Modern async ORM mappings.
-* **Alembic**: Database schema migrations.
-* **FAISS**: High-dimensional vector similarity search.
-* **pypdf / python-docx**: Document parsers.
-* **httpx**: Async HTTP client for external LLM API calls.
-* **jose / bcrypt**: JWT token operations and password hashing.
+### Knowledge Base Management
 
-### Frontend (User Interface)
-* **Next.js 14**: Standalone production build configuration.
-* **TypeScript**: Strict compile-time type safety.
-* **Tailwind CSS**: Dark/light theme variable styling.
-* **Zustand**: Lightweight client state management.
-* **Framer Motion**: Interactive UI micro-animations.
-* **Lucide React**: Vector dashboard icons.
+* Upload PDF, DOCX, TXT files
+* Multi-document indexing
+* Metadata management
+* Document deletion and updates
 
-### Infrastructure & DevOps
-* **Docker & Compose**: Local container runtime.
-* **Kubernetes (1.28+)**: Production deployments with Horizontal Pod Autoscalers (HPA), StatefulSets, ConfigMaps, and Ingress rules.
-* **Prometheus & Grafana**: Live server monitoring.
-* **GitHub Actions**: Continuous integration (eslint, pytest, black, mypy) and deployments.
+### AI Chat Interface
+
+* Context-aware responses
+* Source-grounded answers
+* Conversational memory
+* Natural language querying
+
+### Hybrid Search Engine
+
+* Dense vector retrieval
+* Sparse lexical retrieval
+* Reciprocal Rank Fusion ranking
+* Improved retrieval accuracy
+
+### Security & Administration
+
+* Role-based access control
+* Multi-tenant support
+* Audit logging
+* Rate limiting
+
+---
+
+## Application Screenshots
+
+### Login Page
+<img width="1470" height="873" alt="Login Page" src="https://github.com/user-attachments/assets/e0c3550a-5fcd-4192-85ba-d17ef245c79d" />
+
+### knowledge Base
+<img width="1470" height="876" alt="Knowledge Base " src="https://github.com/user-attachments/assets/d7ae2997-bb27-499d-b459-a8cd9efe7f46" />
+
+### Ingestion Pipeline Process
+<img width="1470" height="878" alt="Ingestion Pipeline Process" src="https://github.com/user-attachments/assets/b2c17c96-9471-4ece-b3ac-2f9f050c9b93" />
+
+### Document upload in Knowledge Base
+<img width="1470" height="882" alt="Document upload in Knowledge Base" src="https://github.com/user-attachments/assets/8ca4fb00-faba-470d-83a8-e9a21ca273fe" />
+
+### Chat Interface 1
+<img width="1470" height="882" alt="Chat Interfce 1 " src="https://github.com/user-attachments/assets/d789124a-2597-4205-b172-211ffa706a89" />
+
+### Chat Interface 2
+<img width="1470" height="884" alt="Chat Interface 2 " src="https://github.com/user-attachments/assets/04aa0527-1c20-4329-b278-798a06542fcf" />
+
+### Analytics Page
+<img width="1470" height="886" alt="Analytics Page" src="https://github.com/user-attachments/assets/1d722d45-fe8b-4bdb-8c24-8180cc902837" />
+
+### Screenshots
+<img width="1470" height="886" alt="Screenshot 2026-06-14 at 3 08 56 PM" src="https://github.com/user-attachments/assets/d0d2bcab-d776-454d-9878-9f4d17b622b5" />
+<img width="1470" height="882" alt="Screenshot 2026-06-14 at 3 08 48 PM" src="https://github.com/user-attachments/assets/0bae26a2-09d3-4d67-802c-8eda4a7fb642" />
+
+---
+
+## Key Engineering Achievements
+
+* Implemented enterprise-grade RAG architecture
+* Designed hybrid retrieval pipeline combining FAISS and BM25
+* Built scalable FastAPI backend with asynchronous processing
+* Developed responsive and modern Next.js UI
+* Integrated Gemini AI for contextual answer generation
+* Containerized application using Docker for easy deployment
 
 ---
 
