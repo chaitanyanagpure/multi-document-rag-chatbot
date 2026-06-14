@@ -1,261 +1,171 @@
-# Enterprise Multi-Document RAG Chatbot
+# VerbaFlow AI 🚀
+### Enterprise-Grade Multi-Document RAG & Chat Intelligence Platform
 
-An enterprise-grade AI-powered Retrieval-Augmented Generation (RAG) platform that enables users to upload, manage, and query multiple documents through an intelligent conversational interface.
+[![CI](https://github.com/your-org/verbaflow-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/verbaflow-ai/actions/workflows/ci.yml)
+[![CD](https://github.com/your-org/verbaflow-ai/actions/workflows/cd.yml/badge.svg)](https://github.com/your-org/verbaflow-ai/actions/workflows/cd.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-14.2-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)
 
-Built using Next.js, FastAPI, PostgreSQL, Redis, FAISS, and Gemini AI, the platform combines semantic vector search and lexical retrieval to provide highly accurate, context-aware responses from uploaded knowledge bases.
-
----
-
-## Project Highlights
-
-* Multi-document Knowledge Base Management
-* AI-powered Conversational Search
-* Hybrid Retrieval (FAISS + BM25)
-* Role-Based Access Control (RBAC)
-* Multi-Tenant Architecture
-* FastAPI Backend with Async Processing
-* Modern Next.js 14 Frontend
-* Redis Caching & Rate Limiting
-* Docker & Kubernetes Ready
-* Enterprise Dashboard UI
+**VerbaFlow AI** is a production-ready, highly optimized **Multi-Document Retrieval-Augmented Generation (RAG)** platform designed for enterprise environments. It provides isolated multi-tenant workspaces where teams can ingest high volumes of documents (PDFs, Docx, spreadsheets, and more), process them through an advanced hybrid search pipeline, and query them via real-time SSE (Server-Sent Events) streaming with inline citations and full developer telemetry diagnostics.
 
 ---
 
-## Problem Statement
+## 🏗️ Architectural Blueprint
 
-Organizations often struggle to efficiently retrieve information from large collections of documents.
-
-Traditional keyword search systems fail to understand context and semantics.
-
-This project solves the problem by combining:
-
-* Semantic Vector Search (FAISS)
-* Lexical Search (BM25)
-* Hybrid Retrieval Pipeline (RRF)
-* Large Language Models (Gemini AI)
-
-to deliver accurate answers grounded in organizational knowledge.
-
----
-
-## System Architecture
-
-```text
-User
- │
- ▼
-Next.js Frontend
- │
- ▼
-FastAPI Backend
- │
- ├── Authentication & RBAC
- ├── Knowledge Base Management
- ├── Chat Service
- └── Retrieval Engine
-          │
-          ├── FAISS Vector Search
-          ├── BM25 Lexical Search
-          └── RRF Fusion
-                    │
-                    ▼
-               Gemini AI
-                    │
-                    ▼
-               Final Response
-
-Database Layer
- ├── PostgreSQL
- └── Redis Cache
+```
+                     ┌──────────────────────────────────────────────────────────┐
+                     │              VerbaFlow AI Web Application                │
+                     └──────────────────────────────────────────────────────────┘
+                                                   │
+                          ┌────────────────────────┴────────────────────────┐
+                          ▼                                                 ▼
+             ┌─────────────────────────┐                       ┌─────────────────────────┐
+             │    Next.js Frontend     │                       │     FastAPI Backend     │
+             │   (React 18 / TS)       │       REST / SSE      │    (Python 3.12 async)  │
+             │  • Port 3000            ├──────────────────────►│   • Port 8000           │
+             │  • Tailwind CSS         │      WebSockets       │   • Uvicorn ASGI Server │
+             └─────────────────────────┘                       └────────────+────────────┘
+                                                                            │
+                                         ┌──────────────────────────────────+──────────────────────────────────┐
+                                         ▼                                  ▼                                  ▼
+                            ┌─────────────────────────┐        ┌─────────────────────────┐        ┌─────────────────────────┐
+                            │      PostgreSQL 16      │        │         Redis 7         │        │    Vector Database      │
+                            │  • Multi-tenant DB      │        │  • Sliding Rate Limits  │        │  • Per-KB FAISS Indices │
+                            │  • User Profiles & RBAC │        │  • Token cache store    │        │  • Pinecone (Optional)  │
+                            │  • Diagnostic Audit Logs│        │  • Ingestion worker queue│       └─────────────────────────┘
+                            └─────────────────────────┘        └─────────────────────────┘
 ```
 
 ---
 
-## Tech Stack
+## 🧠 Advanced Core Engineering & Features
 
-### Frontend
+This platform is built using enterprise software design patterns. Here are the core engineering solutions implemented:
 
-* Next.js 14
-* TypeScript
-* React
-* Tailwind CSS
-* Zustand
+### 1. Advanced Hybrid Search & RAG Orchestration
+* **Dual Retrieval Engine**: Combines **dense vector search** (FAISS FlatIP vector indices, capturing semantic meaning) with **sparse lexical retrieval** (BM25Okapi, catching exact keywords, codes, and IDs) to achieve high recall and precision.
+* **Reciprocal Rank Fusion (RRF)**: Merges sparse and dense search results using an algebraic rank-fusion scorer ($RRF\_Score = \sum_{m \in M} \frac{1}{k + r_m(d)}$) to generate the optimal context set.
+* **Smart Context Optimization**: Filters retrieved chunks based on strict cosine similarity thresholds, dynamically compresses prompts to respect LLM token constraints, and appends structured inline citations (mapping page numbers, sources, and similarity scores) to all responses.
+* **SSE Token Streaming**: Deliver real-time answers utilizing async HTTP generators via Server-Sent Events (SSE) directly to the user bubble.
 
-### Backend
+### 2. High-Throughput 10-Step Ingestion Pipeline
+* **Asynchronous processing**: Large document ingestion is decoupled from the request cycle using background workers powered by Redis queues.
+* **Parallel processing**: Implements parallel batch uploads in the frontend, sending document-level ingestion events to the client via a persistent `EventSource` connection.
+* **Dynamic Backoffs & Quota Protection**: Integrates Tenacity retries and regular-expression based rate-limit parsing (reading Google's `retry_delay` seconds directly from 429 quota errors) to safely resume operations without failing jobs.
+* **Thread-Safe Vector Locks**: Synchronizes document additions, deletions, and updates to the FAISS and BM25 index stores using a per-Knowledge-Base **async lock registry** to prevent index corruption.
+* **Stuck Job Recovery Loop**: A lightweight background cleaner executes every 30 seconds to recover files stuck in processing states beyond 300 seconds, transitioning them to `FAILED` and logging detailed telemetry contexts.
 
-* FastAPI
-* SQLAlchemy 2.0
-* Uvicorn
+### 3. Enterprise Security & Isolation
+* **Row-Level Tenant Isolation**: All queries, collections, chats, and files are scoped using dynamic Organization Tenant IDs.
+* **JWT Session Rotation**: Employs secure cryptographic access tokens (short lifespan) and refresh tokens (long lifespan, stored in localStorage) to authenticate sessions.
+* **Role-Based Access Control (RBAC)**: Fine-grained user role permissions (`ORG_ADMIN`, `MANAGER`, `EMPLOYEE`, `VIEWER`) restrict administrative dashboards and settings adjustments.
 
-### Database
-
-* PostgreSQL 16
-
-### Caching
-
-* Redis 7
-
-### AI & Retrieval
-
-* Gemini AI
-* FAISS Vector Database
-* BM25 Search
-* Reciprocal Rank Fusion (RRF)
-
-### DevOps
-
-* Docker
-* Docker Compose
-* Kubernetes
+### 4. Telemetry, Metrics & Observability
+* **Performance Telemetry Logging**: Stores queried token volumes, vector search durations, LLM response latencies, and token costs in JSON diagnostics fields in the database.
+* **Developer Diagnostics Panel**: A collapsible panel on each assistant message displays detailed vector metrics, similarity matches, and traceback trace logs directly in the UI.
+* **Prometheus Metrics**: Exposes custom application metrics at the `/metrics` endpoint, ready for ingestion into Prometheus and visualization in Grafana.
 
 ---
 
-## ✨ Core Features
+## 🛠️ Tech Stack & Dependencies
 
-### Knowledge Base Management
+### Backend (API & RAG)
+* **FastAPI**: Async ASGI web framework.
+* **SQLAlchemy 2.0**: Modern async ORM mappings.
+* **Alembic**: Database schema migrations.
+* **FAISS**: High-dimensional vector similarity search.
+* **pypdf / python-docx**: Document parsers.
+* **httpx**: Async HTTP client for external LLM API calls.
+* **jose / bcrypt**: JWT token operations and password hashing.
 
-* Upload PDF, DOCX, TXT files
-* Multi-document indexing
-* Metadata management
-* Document deletion and updates
+### Frontend (User Interface)
+* **Next.js 14**: Standalone production build configuration.
+* **TypeScript**: Strict compile-time type safety.
+* **Tailwind CSS**: Dark/light theme variable styling.
+* **Zustand**: Lightweight client state management.
+* **Framer Motion**: Interactive UI micro-animations.
+* **Lucide React**: Vector dashboard icons.
 
-### AI Chat Interface
-
-* Context-aware responses
-* Source-grounded answers
-* Conversational memory
-* Natural language querying
-
-### Hybrid Search Engine
-
-* Dense vector retrieval
-* Sparse lexical retrieval
-* Reciprocal Rank Fusion ranking
-* Improved retrieval accuracy
-
-### Security & Administration
-
-* Role-based access control
-* Multi-tenant support
-* Audit logging
-* Rate limiting
+### Infrastructure & DevOps
+* **Docker & Compose**: Local container runtime.
+* **Kubernetes (1.28+)**: Production deployments with Horizontal Pod Autoscalers (HPA), StatefulSets, ConfigMaps, and Ingress rules.
+* **Prometheus & Grafana**: Live server monitoring.
+* **GitHub Actions**: Continuous integration (eslint, pytest, black, mypy) and deployments.
 
 ---
 
-## Application Screenshots
+## 🚀 Local Development Quick Start
 
-### Login Page
-<img width="1470" height="873" alt="Login Page" src="https://github.com/user-attachments/assets/e0c3550a-5fcd-4192-85ba-d17ef245c79d" />
-
-### knowledge Base
-<img width="1470" height="876" alt="Knowledge Base " src="https://github.com/user-attachments/assets/d7ae2997-bb27-499d-b459-a8cd9efe7f46" />
-
-### Ingestion Pipeline Process
-<img width="1470" height="878" alt="Ingestion Pipeline Process" src="https://github.com/user-attachments/assets/b2c17c96-9471-4ece-b3ac-2f9f050c9b93" />
-
-### Document upload in Knowledge Base
-<img width="1470" height="882" alt="Document upload in Knowledge Base" src="https://github.com/user-attachments/assets/8ca4fb00-faba-470d-83a8-e9a21ca273fe" />
-
-### Chat Interface 1
-<img width="1470" height="882" alt="Chat Interfce 1 " src="https://github.com/user-attachments/assets/d789124a-2597-4205-b172-211ffa706a89" />
-
-### Chat Interface 2
-<img width="1470" height="884" alt="Chat Interface 2 " src="https://github.com/user-attachments/assets/04aa0527-1c20-4329-b278-798a06542fcf" />
-
-### Analytics Page
-<img width="1470" height="886" alt="Analytics Page" src="https://github.com/user-attachments/assets/1d722d45-fe8b-4bdb-8c24-8180cc902837" />
-
-### Screenshots
-<img width="1470" height="886" alt="Screenshot 2026-06-14 at 3 08 56 PM" src="https://github.com/user-attachments/assets/d0d2bcab-d776-454d-9878-9f4d17b622b5" />
-<img width="1470" height="882" alt="Screenshot 2026-06-14 at 3 08 48 PM" src="https://github.com/user-attachments/assets/0bae26a2-09d3-4d67-802c-8eda4a7fb642" />
-
----
-
-## Key Engineering Achievements
-
-* Implemented enterprise-grade RAG architecture
-* Designed hybrid retrieval pipeline combining FAISS and BM25
-* Built scalable FastAPI backend with asynchronous processing
-* Developed responsive and modern Next.js UI
-* Integrated Gemini AI for contextual answer generation
-* Containerized application using Docker for easy deployment
-
----
-
-## Local Setup
-
-### Clone Repository
-
+### 1. Clone & Set Environment
 ```bash
-git clone https://github.com/chaitanyanagpure/multi-document-rag-chatbot.git
+git clone https://github.com/your-org/verbaflow-ai.git
+cd verbaflow-ai
+cp .env.example .env
+```
+Open `.env` and configure your API key and secrets:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+SECRET_KEY=generate_with_openssl_rand_hex_32
 ```
 
-### Backend Setup
-
+### 2. Start Services
+Launch PostgreSQL, Redis, backend, and frontend containers:
 ```bash
-cd backend
-
-python -m venv venv
-
-source venv/bin/activate
-
-pip install -r requirements.txt
+docker compose up -d --build
 ```
 
-### Frontend Setup
+### 3. Verify Deployments
+* **Frontend UI**: http://localhost:3000
+* **API Documentation**: http://localhost:8000/docs
+* **Health Endpoint**: http://localhost:8000/health
 
+### 4. Run Tests
+Verify compile constraints and execution safety:
 ```bash
-cd frontend
-
-npm install
-
-npm run dev
-```
-
-### Run Using Docker
-
-```bash
-docker-compose up --build
+docker compose exec backend pytest
 ```
 
 ---
 
-## Future Enhancements
+## 📂 Project Structure
 
-* Multi-Agent AI Collaboration
-* Voice-Based Interaction
-* OCR Support for Scanned PDFs
-* Real-Time Streaming Responses
-* Advanced Analytics Dashboard
-* Citation-Based Responses
-* Cloud Deployment Automation
+```
+verbaflow-ai/
+├── backend/                    # FastAPI ASGI Python backend
+│   ├── app/
+│   │   ├── api/               # Router endpoints (v1/)
+│   │   ├── core/              # Security, settings, config
+│   │   ├── models/            # SQLAlchemy database entities
+│   │   ├── repositories/      # Database abstraction layers
+│   │   ├── schemas/           # Pydantic validation schemas
+│   │   └── services/          # RAG, LLM, ingestion pipelines
+│   ├── tests/                 # Unit and E2E integration test suite
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── frontend/                   # Next.js 14 React frontend
+│   ├── app/                   # App Router pages and layouts
+│   ├── components/            # Reusable UI widgets and layout modules
+│   ├── lib/                   # API clients and Zustand stores
+│   ├── Dockerfile
+│   └── package.json
+│
+├── k8s/                       # Production Kubernetes manifests
+│   ├── postgres-statefulset.yaml
+│   ├── backend-deployment.yaml
+│   ├── frontend-deployment.yaml
+│   └── monitoring/            # Grafana/Prometheus dashboard mappings
+│
+├── docker-compose.yml         # Container orchestrator configuration
+├── .env.example               # Template environment configuration
+└── LICENSE                    # Project license
+```
 
 ---
 
-## Author
-
-### Chaitanya Nagpure
-
-AI/ML Engineer | Full Stack Developer | Generative AI Enthusiast
-
-GitHub:
-https://github.com/chaitanyanagpure
-
-LinkedIn:
-https://www.linkedin.com/in/chaitanyanagpure?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=ios_app
-
----
-
-## Why This Project Matters
-
-This project demonstrates expertise in:
-
-* Retrieval-Augmented Generation (RAG)
-* Generative AI Applications
-* Vector Databases
-* Full Stack Development
-* Backend System Design
-* AI Product Engineering
-* Enterprise Software Architecture
-
-The solution reflects real-world enterprise AI workflows and showcases practical implementation of modern LLM-powered applications.
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
