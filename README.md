@@ -110,7 +110,7 @@ Database Layer
 
 ---
 
-## ✨ Core Features
+## Core Features
 
 ### Knowledge Base Management
 
