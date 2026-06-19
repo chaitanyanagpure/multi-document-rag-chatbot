@@ -40,35 +40,9 @@ to deliver accurate answers grounded in organizational knowledge.
 
 ## System Architecture
 
-```text
-User
- │
- ▼
-Next.js Frontend
- │
- ▼
-FastAPI Backend
- │
- ├── Authentication & RBAC
- ├── Knowledge Base Management
- ├── Chat Service
- └── Retrieval Engine
-          │
-          ├── FAISS Vector Search
-          ├── BM25 Lexical Search
-          └── RRF Fusion
-                    │
-                    ▼
-               Gemini AI
-                    │
-                    ▼
-               Final Response
+<img width="1024" height="1024" alt="system_architecture_diagram" src="https://github.com/user-attachments/assets/1134dae1-35b4-40c7-bf51-311fc72d8e28" />
 
-Database Layer
- ├── PostgreSQL
- └── Redis Cache
-```
-
+   
 ---
 
 ## Tech Stack
