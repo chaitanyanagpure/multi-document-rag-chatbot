@@ -40,7 +40,7 @@ to deliver accurate answers grounded in organizational knowledge.
 
 ## System Architecture
 
-<img width="1024" height="1024" alt="system_architecture_diagram" src="https://github.com/user-attachments/assets/1134dae1-35b4-40c7-bf51-311fc72d8e28" />
+<img width="1024" height="1024" alt="system_architecture_diagram" src="https://github.com/user-attachments/assets/ad35cfa2-cd98-4d8c-b713-baf9fe5a7d86" />
 
    
 ---
